@@ -21,7 +21,6 @@ type OrderPart struct {
     PartID         int64     `json:"part_id"`
     Quantity       int       `json:"quantity"`
     PriceAtMoment  float64   `json:"price_at_moment"`
-    Part           *Part     `json:"part,omitempty"` // Для JOIN запросов
     CreatedAt      time.Time `json:"created_at"`
 }
 

@@ -44,7 +44,6 @@ type Order struct {
     SyncAttempts    int         `json:"sync_attempts"`
 }
 
-// Для ответа с дополнительной информацией
 type OrderWithParts struct {
     Order
     Parts    []OrderPart `json:"parts,omitempty"`
@@ -58,8 +57,8 @@ type UpdateOrderStatusRequest struct {
 }
 
 type CloseOrderRequest struct {
-    PhotoBefore   string `json:"photo_before,omitempty"`   // base64 фото "До"
-    PhotoAfter    string `json:"photo_after,omitempty"`    // base64 фото "После"
-    Signature     string `json:"signature,omitempty"`      // base64 подписи
-    Notes         string `json:"notes,omitempty"`
+    PhotoBefore string `json:"photo_before,omitempty"`
+    PhotoAfter  string `json:"photo_after,omitempty"`
+    Signature   string `json:"signature,omitempty"`
+    Notes       string `json:"notes,omitempty"`
 }

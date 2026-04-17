@@ -5,15 +5,14 @@ import (
 )
 
 type Engineer struct {
-    ID           int64     `json:"id"`
-    Login        string    `json:"login"`
-    PasswordHash string    `json:"-"` // Не возвращаем в JSON
-    FCMToken     string    `json:"fcm_token,omitempty"`
-    FullName     string    `json:"full_name"`
-    Phone        string    `json:"phone"`
-    IsActive     bool      `json:"is_active"`
-    CreatedAt    time.Time `json:"created_at"`
-    UpdatedAt    time.Time `json:"updated_at"`
+    ID        int64     `json:"id"`
+    Login     string    `json:"login"`
+    FullName  string    `json:"full_name"`
+    Phone     string    `json:"phone"`
+    IsActive  bool      `json:"is_active"`
+    FCMToken  string    `json:"fcm_token,omitempty"`
+    CreatedAt time.Time `json:"created_at"`
+    UpdatedAt time.Time `json:"updated_at"`
 }
 
 type EngineerLoginRequest struct {
@@ -24,8 +23,4 @@ type EngineerLoginRequest struct {
 type EngineerLoginResponse struct {
     Token string   `json:"token"`
     User  Engineer `json:"user"`
-}
-
-type EngineerUpdateFCMRequest struct {
-    FCMToken string `json:"fcm_token" binding:"required"`
 }
