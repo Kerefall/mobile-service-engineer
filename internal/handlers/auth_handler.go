@@ -3,15 +3,15 @@ package handlers
 import (
 	"net/http"
 
-	"github.com/Kerefall/mobile-service-engineer/internal/service"
+	"github.com/Kerefall/mobile-service-engineer/internal/services"
 	"github.com/gin-gonic/gin"
 )
 
 type AuthHandler struct {
-	authService *service.AuthService
+	authService *services.AuthService
 }
 
-func NewAuthHandler(authService *service.AuthService) *AuthHandler {
+func NewAuthHandler(authService *services.AuthService) *AuthHandler {
 	return &AuthHandler{authService: authService}
 }
 
@@ -47,15 +47,9 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	token, err := h.authService.Login(c.Request.Context(), req.Login, req.Password)
+	token, engineer, err := h.authService.Login(c.Request.Context(), req.Login, req.Password)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
-		return
-	}
-
-	engineer, err := h.authService.GetEngineerByLogin(c.Request.Context(), req.Login)
-	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"token": token})
 		return
 	}
 
@@ -100,7 +94,7 @@ func (h *AuthHandler) UpdateFCMToken(c *gin.Context) {
 	userID := userIDInterface.(int64)
 
 	if err := h.authService.UpdateFCMToken(c.Request.Context(), userID, req.FCMToken); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "ошибка сохранения токена"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "ошибка обновления токена"})
 		return
 	}
 

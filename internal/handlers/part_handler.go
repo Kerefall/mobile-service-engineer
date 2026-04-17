@@ -4,20 +4,20 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/Kerefall/mobile-service-engineer/internal/service"
+	"github.com/Kerefall/mobile-service-engineer/internal/services"
 	"github.com/gin-gonic/gin"
 )
 
 type PartHandler struct {
-	partService *service.PartService
+	partService *services.PartService
 }
 
-func NewPartHandler(partService *service.PartService) *PartHandler {
+func NewPartHandler(partService *services.PartService) *PartHandler {
 	return &PartHandler{partService: partService}
 }
 
 func (h *PartHandler) GetParts(c *gin.Context) {
-	parts, err := h.partService.GetAllParts(c.Request.Context())
+	parts, err := h.partService.GetParts(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "ошибка получения запчастей"})
 		return
@@ -35,9 +35,9 @@ func (h *PartHandler) WriteOffParts(c *gin.Context) {
 
 	var req struct {
 		Parts []struct {
-			PartID   int64 `json:"part_id"`
-			Quantity int   `json:"quantity"`
-		} `json:"parts" binding:"required"`
+			PartID   int64 `json:"part_id" binding:"required"`
+			Quantity int   `json:"quantity" binding:"required,min=1"`
+		} `json:"parts" binding:"required,min=1"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -45,11 +45,17 @@ func (h *PartHandler) WriteOffParts(c *gin.Context) {
 		return
 	}
 
-	err = h.partService.WriteOffParts(c.Request.Context(), orderID, req.Parts)
+	parts := make([]struct{ PartID int64; Quantity int }, len(req.Parts))
+	for i, p := range req.Parts {
+		parts[i].PartID = p.PartID
+		parts[i].Quantity = p.Quantity
+	}
+
+	err = h.partService.WriteOffParts(c.Request.Context(), orderID, parts)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Запчасти списаны"})
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "запчасти списаны"})
 }

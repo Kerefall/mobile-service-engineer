@@ -2,6 +2,8 @@ package services
 
 import (
     "context"
+    "fmt"
+    "time"
     "github.com/jackc/pgx/v5"
     "github.com/jackc/pgx/v5/pgxpool"
     "github.com/Kerefall/mobile-service-engineer/internal/models"
@@ -22,7 +24,9 @@ func (s *OrderService) GetOrdersByEngineer(ctx context.Context, engineerID int64
     if status == "active" {
         rows, err = s.db.Query(ctx, `
             SELECT id, title, description, address, latitude, longitude, 
-                   scheduled_date, status, engineer_id, created_at, updated_at
+                   scheduled_date, status, engineer_id, 
+                   photo_before_path, photo_after_path, signature_path, pdf_path,
+                   arrival_time, completed_at, created_at, updated_at
             FROM orders 
             WHERE engineer_id = $1 AND status IN ('new', 'in_progress', 'on_the_way')
             ORDER BY scheduled_date
@@ -30,7 +34,9 @@ func (s *OrderService) GetOrdersByEngineer(ctx context.Context, engineerID int64
     } else {
         rows, err = s.db.Query(ctx, `
             SELECT id, title, description, address, latitude, longitude, 
-                   scheduled_date, status, engineer_id, created_at, updated_at
+                   scheduled_date, status, engineer_id, 
+                   photo_before_path, photo_after_path, signature_path, pdf_path,
+                   arrival_time, completed_at, created_at, updated_at
             FROM orders 
             WHERE engineer_id = $1
             ORDER BY scheduled_date
@@ -38,7 +44,7 @@ func (s *OrderService) GetOrdersByEngineer(ctx context.Context, engineerID int64
     }
     
     if err != nil {
-        return nil, err
+        return nil, fmt.Errorf("ошибка запроса: %v", err)
     }
     defer rows.Close()
     
@@ -48,10 +54,12 @@ func (s *OrderService) GetOrdersByEngineer(ctx context.Context, engineerID int64
         err := rows.Scan(
             &order.ID, &order.Title, &order.Description, &order.Address,
             &order.Latitude, &order.Longitude, &order.ScheduledDate,
-            &order.Status, &order.EngineerID, &order.CreatedAt, &order.UpdatedAt,
+            &order.Status, &order.EngineerID,
+            &order.PhotoBeforePath, &order.PhotoAfterPath, &order.SignaturePath, &order.PDFPath,
+            &order.ArrivalTime, &order.CompletedAt, &order.CreatedAt, &order.UpdatedAt,
         )
         if err != nil {
-            return nil, err
+            return nil, fmt.Errorf("ошибка сканирования: %v", err)
         }
         orders = append(orders, order)
     }
@@ -126,4 +134,55 @@ func (s *OrderService) UpdateOrderSignature(ctx context.Context, orderID int64, 
         UPDATE orders SET signature_path = $1, updated_at = NOW() WHERE id = $2
     `, signaturePath, orderID)
     return err
+}
+
+// НОВЫЙ МЕТОД - проверяет можно ли закрыть заказ
+func (s *OrderService) ValidateOrderReadyToClose(ctx context.Context, orderID int64) error {
+    order, err := s.GetOrderByID(ctx, orderID)
+    if err != nil {
+        return fmt.Errorf("заказ не найден")
+    }
+
+    if order.Status == "completed" {
+        return fmt.Errorf("заказ уже закрыт")
+    }
+
+    if order.PhotoBeforePath == "" {
+        return fmt.Errorf("не загружено фото 'До'")
+    }
+
+    if order.PhotoAfterPath == "" {
+        return fmt.Errorf("не загружено фото 'После'")
+    }
+
+    if order.SignaturePath == "" {
+        return fmt.Errorf("нет подписи клиента")
+    }
+
+    return nil
+}
+
+// НОВЫЙ МЕТОД - обновляет путь к PDF
+func (s *OrderService) UpdateOrderPDFPath(ctx context.Context, orderID int64, pdfPath string) error {
+    _, err := s.db.Exec(ctx, `
+        UPDATE orders SET pdf_path = $1, updated_at = NOW() WHERE id = $2
+    `, pdfPath, orderID)
+    if err != nil {
+        return fmt.Errorf("ошибка обновления пути PDF: %v", err)
+    }
+    return nil
+}
+
+// CreateOrder создает новый заказ
+func (s *OrderService) CreateOrder(ctx context.Context, title, description, address string, scheduledDate time.Time, engineerID int64) (int64, error) {
+    var orderID int64
+    err := s.db.QueryRow(ctx, `
+        INSERT INTO orders (title, description, address, scheduled_date, status, engineer_id, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, 'new', $5, NOW(), NOW())
+        RETURNING id
+    `, title, description, address, scheduledDate, engineerID).Scan(&orderID)
+    if err != nil {
+        return 0, fmt.Errorf("ошибка создания заказа: %v", err)
+    }
+    return orderID, nil
 }

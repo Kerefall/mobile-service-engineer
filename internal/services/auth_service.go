@@ -106,3 +106,14 @@ func (s *AuthService) GetEngineerByID(ctx context.Context, id int64) (*Engineer,
         IsActive: isActive,
     }, nil
 }
+
+// UpdateFCMToken обновляет FCM токен инженера
+func (s *AuthService) UpdateFCMToken(ctx context.Context, engineerID int64, fcmToken string) error {
+    _, err := s.db.Exec(ctx, `
+        UPDATE engineers SET fcm_token = $1, updated_at = NOW() WHERE id = $2
+    `, fcmToken, engineerID)
+    if err != nil {
+        return fmt.Errorf("ошибка обновления FCM токена: %v", err)
+    }
+    return nil
+}

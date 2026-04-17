@@ -1,45 +1,40 @@
 package services
 
 import (
-    "fmt"
-    "os"
-    "path/filepath"
-    "time"
-    "github.com/Kerefall/mobile-service-engineer/internal/config"
+	"fmt"
+	"os"
+	"path/filepath"
+	"time"
+
+	"github.com/Kerefall/mobile-service-engineer/internal/config"
 )
 
 type StorageService struct {
-    cfg *config.Config
+	uploadPath string
 }
 
 func NewStorageService(cfg *config.Config) *StorageService {
-    // Создаём папку для загрузок если её нет
-    os.MkdirAll("./uploads/photos", 0755)
-    os.MkdirAll("./uploads/signatures", 0755)
-    os.MkdirAll("./uploads/pdfs", 0755)
-    
-    return &StorageService{cfg: cfg}
+	uploadPath := "./uploads"
+	os.MkdirAll(uploadPath, 0755)
+	os.MkdirAll(filepath.Join(uploadPath, "photos"), 0755)
+	os.MkdirAll(filepath.Join(uploadPath, "signatures"), 0755)
+	os.MkdirAll(filepath.Join(uploadPath, "pdfs"), 0755)
+	
+	return &StorageService{uploadPath: uploadPath}
 }
 
-// SaveFile сохраняет файл на диск и возвращает путь
-func (s *StorageService) SaveFile(data []byte, folder, filename string) (string, error) {
-    dir := fmt.Sprintf("./uploads/%s", folder)
-    err := os.MkdirAll(dir, 0755)
-    if err != nil {
-        return "", fmt.Errorf("ошибка создания папки: %w", err)
-    }
-    
-    fullPath := filepath.Join(dir, filename)
-    err = os.WriteFile(fullPath, data, 0644)
-    if err != nil {
-        return "", fmt.Errorf("ошибка сохранения файла: %w", err)
-    }
-    
-    return fmt.Sprintf("/static/%s/%s", folder, filename), nil
-}
-
-// GenerateUniqueFilename генерирует уникальное имя файла
-func (s *StorageService) GenerateUniqueFilename(prefix, ext string) string {
-    timestamp := time.Now().UnixNano()
-    return fmt.Sprintf("%s_%d%s", prefix, timestamp, ext)
+func (s *StorageService) SaveFile(data []byte, subdir string, ext string) (string, error) {
+	dir := filepath.Join(s.uploadPath, subdir)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", err
+	}
+	
+	filename := fmt.Sprintf("%d_%s%s", time.Now().UnixNano(), subdir, ext)
+	filePath := filepath.Join(dir, filename)
+	
+	if err := os.WriteFile(filePath, data, 0644); err != nil {
+		return "", err
+	}
+	
+	return "/static/" + subdir + "/" + filename, nil
 }

@@ -6,22 +6,23 @@ import (
 	"net/http"
 	"path/filepath"
 	"strconv"
+	"time"
 	"strings"
 
 	"github.com/Kerefall/mobile-service-engineer/internal/models"
-	"github.com/Kerefall/mobile-service-engineer/internal/service"
+	"github.com/Kerefall/mobile-service-engineer/internal/services"
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
 )
 
 type OrderHandler struct {
-	orderService   *service.OrderService
-	partService    *service.PartService
-	pdfService     *service.PDFService
-	storageService *service.StorageService
+	orderService   *services.OrderService
+	partService    *services.PartService
+	pdfService     *services.PDFService
+	storageService *services.StorageService
 }
 
-func NewOrderHandler(orderService *service.OrderService, partService *service.PartService, pdfService *service.PDFService, storageService *service.StorageService) *OrderHandler {
+func NewOrderHandler(orderService *services.OrderService, partService *services.PartService, pdfService *services.PDFService, storageService *services.StorageService) *OrderHandler {
 	return &OrderHandler{
 		orderService:   orderService,
 		partService:    partService,
@@ -263,4 +264,32 @@ func (h *OrderHandler) UploadFile(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "path": path})
+}
+
+// CreateOrder - создание нового заказа
+func (h *OrderHandler) CreateOrder(c *gin.Context) {
+    var req struct {
+        Title         string    `json:"title" binding:"required"`
+        Description   string    `json:"description"`
+        Address       string    `json:"address" binding:"required"`
+        ScheduledDate time.Time `json:"scheduled_date" binding:"required"`
+        EngineerID    int64     `json:"engineer_id" binding:"required"`
+    }
+
+    if err := c.ShouldBindJSON(&req); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+        return
+    }
+
+    orderID, err := h.orderService.CreateOrder(c.Request.Context(), req.Title, req.Description, req.Address, req.ScheduledDate, req.EngineerID)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+
+    c.JSON(http.StatusCreated, gin.H{
+        "success":  true,
+        "order_id": orderID,
+        "message":  "заказ создан",
+    })
 }

@@ -5,16 +5,16 @@ import (
 	"strconv"
 
 	"github.com/Kerefall/mobile-service-engineer/internal/dto"
-	"github.com/Kerefall/mobile-service-engineer/internal/service"
+	"github.com/Kerefall/mobile-service-engineer/internal/services"
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
 )
 
 type SyncHandler struct {
-	syncService *service.SyncService
+	syncService *services.SyncService
 }
 
-func NewSyncHandler(syncService *service.SyncService) *SyncHandler {
+func NewSyncHandler(syncService *services.SyncService) *SyncHandler {
 	return &SyncHandler{syncService: syncService}
 }
 
