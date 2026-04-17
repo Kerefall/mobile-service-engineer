@@ -9,6 +9,7 @@ import (
 	"time"
 	"strings"
 
+	"github.com/Kerefall/mobile-service-engineer/internal/config"
 	"github.com/Kerefall/mobile-service-engineer/internal/models"
 	"github.com/Kerefall/mobile-service-engineer/internal/services"
 	"github.com/Kerefall/mobile-service-engineer/pkg/yandexmaps"
@@ -21,14 +22,18 @@ type OrderHandler struct {
 	partService    *services.PartService
 	pdfService     *services.PDFService
 	storageService *services.StorageService
+	onec           *services.OneCClient
+	cfg            *config.Config
 }
 
-func NewOrderHandler(orderService *services.OrderService, partService *services.PartService, pdfService *services.PDFService, storageService *services.StorageService) *OrderHandler {
+func NewOrderHandler(orderService *services.OrderService, partService *services.PartService, pdfService *services.PDFService, storageService *services.StorageService, onec *services.OneCClient, cfg *config.Config) *OrderHandler {
 	return &OrderHandler{
 		orderService:   orderService,
 		partService:    partService,
 		pdfService:     pdfService,
 		storageService: storageService,
+		onec:           onec,
+		cfg:            cfg,
 	}
 }
 
@@ -115,12 +120,20 @@ func (h *OrderHandler) UploadPhotos(c *gin.Context) {
 		return
 	}
 
+	capturedAt := time.Now()
+	stamped := data
 	ext := filepath.Ext(file.Filename)
 	if ext == "" {
 		ext = ".jpg"
 	}
+	if out, newExt, stampErr := services.StampImageWithTime(data, capturedAt); stampErr != nil {
+		logrus.Warnf("метка времени на фото: %v", stampErr)
+	} else {
+		stamped = out
+		ext = newExt
+	}
 
-	path, err := h.storageService.SaveFile(data, "photos", ext)
+	path, err := h.storageService.SaveFile(stamped, "photos", ext)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -136,7 +149,12 @@ func (h *OrderHandler) UploadPhotos(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Фото загружено", "path": path})
+	c.JSON(http.StatusOK, gin.H{
+		"success":      true,
+		"message":      "Фото загружено",
+		"path":         path,
+		"captured_at":  capturedAt.UTC().Format(time.RFC3339),
+	})
 }
 
 func decodeBase64Payload(s string) ([]byte, error) {
@@ -201,20 +219,55 @@ func (h *OrderHandler) CloseOrder(c *gin.Context) {
 		return
 	}
 
+	full, err := h.orderService.GetOrderByID(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "не удалось прочитать заказ"})
+		return
+	}
+	partLines, err := h.partService.GetPartsLinesForOrder(c.Request.Context(), id)
+	if err != nil {
+		logrus.Warnf("запчасти для 1С: %v", err)
+		partLines = nil
+	}
+	doneAt := time.Now()
+	payload := services.OrderClosePayload{
+		OrderID:            full.ID,
+		OneCGuid:           full.OneCGuid,
+		Title:              full.Title,
+		Address:            full.Address,
+		Equipment:          full.Equipment,
+		CompletedAt:        doneAt,
+		PDFWebPath:         pdfPath,
+		PhotoBeforeWebPath: full.PhotoBeforePath,
+		PhotoAfterWebPath:  full.PhotoAfterPath,
+		SignatureWebPath:   full.SignaturePath,
+		Parts:              partLines,
+	}
+	pushErr := h.onec.PushOrderClosed(c.Request.Context(), payload)
+	if pushErr != nil {
+		logrus.Warnf("отправка в 1С: %v", pushErr)
+		if h.cfg != nil && h.cfg.OneCFailOnError {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "1С: " + pushErr.Error(), "pdf_url": pdfPath})
+			return
+		}
+	}
+
 	if err := h.orderService.UpdateOrderPDFPath(c.Request.Context(), id, pdfPath); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "ошибка сохранения пути PDF"})
 		return
 	}
 
-	err = h.orderService.CloseOrder(c.Request.Context(), id, pdfPath)
-	if err != nil {
+	if err := h.orderService.CloseOrder(c.Request.Context(), id, pdfPath); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "ошибка закрытия заказа"})
 		return
 	}
 
-	logrus.Infof("[1C] заказ #%d передан в учётную систему (имитация интеграции)", id)
+	if pushErr != nil {
+		c.JSON(http.StatusOK, gin.H{"success": true, "message": "Заказ закрыт локально", "pdf_url": pdfPath, "onec_delivered": false, "onec_error": pushErr.Error()})
+		return
+	}
 
-	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Заказ закрыт", "pdf_url": pdfPath})
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Заказ закрыт", "pdf_url": pdfPath, "onec_delivered": true})
 }
 
 func (h *OrderHandler) GeneratePDF(c *gin.Context) {

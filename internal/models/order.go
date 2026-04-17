@@ -26,6 +26,8 @@ type Order struct {
     ID              int64       `json:"id"`
     Title           string      `json:"title"`
     Description     string      `json:"description"`
+    Equipment       string      `json:"equipment,omitempty"`
+    OneCGuid        string      `json:"onec_guid,omitempty"`
     Address         string      `json:"address"`
     Latitude        float64     `json:"latitude,omitempty"`
     Longitude       float64     `json:"longitude,omitempty"`
@@ -34,6 +36,8 @@ type Order struct {
     EngineerID      int64       `json:"engineer_id"`
     PhotoBeforePath string      `json:"photo_before_path,omitempty"`
     PhotoAfterPath  string      `json:"photo_after_path,omitempty"`
+    PhotoBeforeAt   *time.Time  `json:"photo_before_at,omitempty"`
+    PhotoAfterAt    *time.Time  `json:"photo_after_at,omitempty"`
     SignaturePath   string      `json:"signature_path,omitempty"`
     PDFPath         string      `json:"pdf_path,omitempty"`
     ArrivalTime     *time.Time  `json:"arrival_time,omitempty"`

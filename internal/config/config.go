@@ -27,6 +27,12 @@ type Config struct {
 	StorageDriver string
 	FCMServerKey  string
 	AdminSecret   string
+	// HTTP-сервис 1С: закрытие заказа (POST JSON). Пустой URL — только локальное сохранение.
+	OneCHTTPURL       string
+	OneCHTTPToken     string
+	OneCFailOnError   bool
+	// Токен для входящих запросов от 1С (импорт заказ-нарядов).
+	IntegrationToken string
 }
 
 func Load() *Config {
@@ -51,6 +57,10 @@ func Load() *Config {
 		StorageDriver:  strings.ToLower(getEnv("STORAGE_DRIVER", "disk")),
 		FCMServerKey:   getEnv("FCM_SERVER_KEY", ""),
 		AdminSecret:    getEnv("ADMIN_SECRET", ""),
+		OneCHTTPURL:    strings.TrimRight(getEnv("ONEC_HTTP_URL", ""), "/"),
+		OneCHTTPToken:  getEnv("ONEC_HTTP_TOKEN", ""),
+		OneCFailOnError: getEnvBool("ONEC_FAIL_ON_ERROR", false),
+		IntegrationToken: getEnv("INTEGRATION_TOKEN", ""),
 	}
 }
 

@@ -74,3 +74,33 @@ func (s *PartService) WriteOffParts(ctx context.Context, orderID int64, parts []
     }
     return nil
 }
+
+// GetPartsLinesForOrder возвращает список списанных запчастей для отправки в 1С при закрытии.
+func (s *PartService) GetPartsLinesForOrder(ctx context.Context, orderID int64) ([]OrderClosePart, error) {
+	rows, err := s.db.Query(ctx, `
+		SELECT p.id, p.article, p.name, op.quantity, op.price_at_moment
+		FROM order_parts op
+		JOIN parts p ON p.id = op.part_id
+		WHERE op.order_id = $1
+		ORDER BY p.name
+	`, orderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []OrderClosePart
+	for rows.Next() {
+		var p OrderClosePart
+		var article, name string
+		var pid int64
+		if err := rows.Scan(&pid, &article, &name, &p.Quantity, &p.Price); err != nil {
+			return nil, err
+		}
+		p.PartID = pid
+		p.Article = article
+		p.Name = name
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}

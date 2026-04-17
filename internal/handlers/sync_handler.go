@@ -11,11 +11,12 @@ import (
 )
 
 type SyncHandler struct {
-	syncService *services.SyncService
+	syncService  *services.SyncService
+	orderService *services.OrderService
 }
 
-func NewSyncHandler(syncService *services.SyncService) *SyncHandler {
-	return &SyncHandler{syncService: syncService}
+func NewSyncHandler(syncService *services.SyncService, orderService *services.OrderService) *SyncHandler {
+	return &SyncHandler{syncService: syncService, orderService: orderService}
 }
 
 func (h *SyncHandler) SyncOrder(c *gin.Context) {
@@ -30,10 +31,25 @@ func (h *SyncHandler) SyncOrder(c *gin.Context) {
 		return
 	}
 
-	err := h.syncService.SyncOrder(c.Request.Context(), req.OrderID, req.PhotoBefore, req.PhotoAfter, req.Signature)
+	userID, ok := c.Get("user_id")
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "нет пользователя"})
+		return
+	}
+	order, err := h.orderService.GetOrderByID(c.Request.Context(), req.OrderID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "заказ не найден"})
+		return
+	}
+	if order.EngineerID != userID.(int64) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "нет доступа к заказу"})
+		return
+	}
+
+	err = h.syncService.SyncOrder(c.Request.Context(), req.OrderID, req.PhotoBefore, req.PhotoAfter, req.Signature, req.Parts)
 	if err != nil {
 		logrus.Errorf("Ошибка синхронизации: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "ошибка синхронизации"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -56,10 +72,25 @@ func (h *SyncHandler) SyncOrderByPath(c *gin.Context) {
 
 	req.OrderID = id
 
-	err = h.syncService.SyncOrder(c.Request.Context(), req.OrderID, req.PhotoBefore, req.PhotoAfter, req.Signature)
+	userID, ok := c.Get("user_id")
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "нет пользователя"})
+		return
+	}
+	order, err := h.orderService.GetOrderByID(c.Request.Context(), req.OrderID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "заказ не найден"})
+		return
+	}
+	if order.EngineerID != userID.(int64) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "нет доступа к заказу"})
+		return
+	}
+
+	err = h.syncService.SyncOrder(c.Request.Context(), req.OrderID, req.PhotoBefore, req.PhotoAfter, req.Signature, req.Parts)
 	if err != nil {
 		logrus.Errorf("Ошибка синхронизации: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "ошибка синхронизации"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 

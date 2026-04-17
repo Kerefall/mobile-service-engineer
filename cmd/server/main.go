@@ -17,13 +17,14 @@ import (
 )
 
 type routeDeps struct {
-	cfg          *config.Config
-	db           *database.PostgresDB
-	authHandler  *handlers.AuthHandler
-	orderHandler *handlers.OrderHandler
-	partHandler  *handlers.PartHandler
-	syncHandler  *handlers.SyncHandler
-	idemp        gin.HandlerFunc
+	cfg                 *config.Config
+	db                  *database.PostgresDB
+	authHandler         *handlers.AuthHandler
+	orderHandler        *handlers.OrderHandler
+	partHandler         *handlers.PartHandler
+	syncHandler         *handlers.SyncHandler
+	integrationHandler  *handlers.IntegrationHandler
+	idemp               gin.HandlerFunc
 }
 
 func mountAPI(prefix string, router *gin.Engine, d *routeDeps) {
@@ -31,6 +32,12 @@ func mountAPI(prefix string, router *gin.Engine, d *routeDeps) {
 	{
 		api.POST("/login", d.authHandler.Login)
 		api.POST("/register", d.authHandler.Register)
+
+		integration := api.Group("/integration")
+		integration.Use(middleware.IntegrationMiddleware(d.cfg))
+		{
+			integration.POST("/1c/orders", d.integrationHandler.ImportOrdersFromOneC)
+		}
 
 		authorized := api.Group("")
 		authorized.Use(middleware.AuthMiddleware(d.cfg.JWTSecret, d.db.Pool))
@@ -78,23 +85,26 @@ func main() {
 	orderService := services.NewOrderService(db.Pool)
 	partService := services.NewPartService(db.Pool)
 	pdfService := services.NewPDFService(db.Pool)
-	syncService := services.NewSyncService(db.Pool, storageService, pdfService)
+	onecClient := services.NewOneCClient(cfg)
+	syncService := services.NewSyncService(db.Pool, storageService, pdfService, partService, onecClient)
 
 	authHandler := handlers.NewAuthHandler(authService)
-	orderHandler := handlers.NewOrderHandler(orderService, partService, pdfService, storageService)
+	orderHandler := handlers.NewOrderHandler(orderService, partService, pdfService, storageService, onecClient, cfg)
 	partHandler := handlers.NewPartHandler(partService)
-	syncHandler := handlers.NewSyncHandler(syncService)
+	syncHandler := handlers.NewSyncHandler(syncService, orderService)
+	integrationHandler := handlers.NewIntegrationHandler(orderService)
 
 	idemp := middleware.IdempotencyMiddleware(db.Pool)
 
 	deps := &routeDeps{
-		cfg:          cfg,
-		db:           db,
-		authHandler:  authHandler,
-		orderHandler: orderHandler,
-		partHandler:  partHandler,
-		syncHandler:  syncHandler,
-		idemp:        idemp,
+		cfg:                cfg,
+		db:                 db,
+		authHandler:        authHandler,
+		orderHandler:       orderHandler,
+		partHandler:        partHandler,
+		syncHandler:        syncHandler,
+		integrationHandler: integrationHandler,
+		idemp:              idemp,
 	}
 
 	router := gin.Default()
@@ -102,7 +112,7 @@ func main() {
 	router.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{"*"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "Idempotency-Key"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "Idempotency-Key", "X-Integration-Token"},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
 	}))
