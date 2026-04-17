@@ -121,3 +121,10 @@ func (s *AuthService) GetEngineerByID(ctx context.Context, id int64) (*Engineer,
 		IsActive: isActive,
 	}, nil
 }
+
+func (s *AuthService) UpdateFCMToken(ctx context.Context, engineerID int64, fcmToken string) error {
+	_, err := s.db.Exec(ctx, `
+        UPDATE engineers SET fcm_token = $1, updated_at = NOW() WHERE id = $2
+    `, fcmToken, engineerID)
+	return err
+}

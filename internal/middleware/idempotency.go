@@ -23,7 +23,7 @@ func (w *respCapture) Write(b []byte) (int, error) {
 }
 
 // IdempotencyMiddleware дедуплицирует запросы с заголовком Idempotency-Key.
-// Для /sync order_id берётся из JSON-тела; для /orders/:id/parts — из параметра пути.
+// order_id: из :id для /orders/:id/parts и /orders/:id/sync; для POST /sync — из JSON order_id.
 func IdempotencyMiddleware(db *pgxpool.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		key := c.GetHeader("Idempotency-Key")

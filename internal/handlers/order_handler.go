@@ -11,6 +11,7 @@ import (
 	"github.com/Kerefall/mobile-service-engineer/internal/models"
 	"github.com/Kerefall/mobile-service-engineer/internal/service"
 	"github.com/gin-gonic/gin"
+	"github.com/sirupsen/logrus"
 )
 
 type OrderHandler struct {
@@ -187,9 +188,20 @@ func (h *OrderHandler) CloseOrder(c *gin.Context) {
 		return
 	}
 
+	if err := h.orderService.ValidateOrderReadyToClose(c.Request.Context(), id); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	pdfPath, err := h.pdfService.GenerateOrderPDF(c.Request.Context(), id, "", "", "")
 	if err != nil {
-		pdfPath = ""
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "ошибка генерации PDF: " + err.Error()})
+		return
+	}
+
+	if err := h.orderService.UpdateOrderPDFPath(c.Request.Context(), id, pdfPath); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "ошибка сохранения пути PDF"})
+		return
 	}
 
 	err = h.orderService.CloseOrder(c.Request.Context(), id, pdfPath)
@@ -197,6 +209,8 @@ func (h *OrderHandler) CloseOrder(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "ошибка закрытия заказа"})
 		return
 	}
+
+	logrus.Infof("[1C] заказ #%d передан в учётную систему (имитация интеграции)", id)
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Заказ закрыт", "pdf_url": pdfPath})
 }

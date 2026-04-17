@@ -1,7 +1,7 @@
 package dto
 
 type SyncOrderRequest struct {
-    OrderID   int64                       `json:"order_id" binding:"required"`
+    OrderID     int64                     `json:"order_id"`
     PhotoBefore string                    `json:"photo_before,omitempty"` // base64
     PhotoAfter  string                    `json:"photo_after,omitempty"`  // base64
     Signature   string                    `json:"signature,omitempty"`    // base64

@@ -98,7 +98,11 @@ func (h *AuthHandler) UpdateFCMToken(c *gin.Context) {
 	}
 
 	userID := userIDInterface.(int64)
-	_ = userID
+
+	if err := h.authService.UpdateFCMToken(c.Request.Context(), userID, req.FCMToken); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "ошибка сохранения токена"})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "FCM токен обновлён"})
 }
