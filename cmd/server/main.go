@@ -40,6 +40,7 @@ func mountAPI(prefix string, router *gin.Engine, d *routeDeps) {
 
 			authorized.GET("/orders", d.orderHandler.GetOrders)
 			authorized.GET("/orders/:id", d.orderHandler.GetOrderByID)
+			authorized.GET("/orders/:id/navigation", d.orderHandler.GetNavigation)
 			authorized.POST("/orders/:id/status", d.orderHandler.UpdateOrderStatus)
 			authorized.POST("/orders/:id/photos", d.orderHandler.UploadPhotos)
 			authorized.POST("/orders/:id/signature", d.orderHandler.UploadSignature)

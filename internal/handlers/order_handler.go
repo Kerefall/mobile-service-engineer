@@ -11,6 +11,7 @@ import (
 
 	"github.com/Kerefall/mobile-service-engineer/internal/models"
 	"github.com/Kerefall/mobile-service-engineer/internal/services"
+	"github.com/Kerefall/mobile-service-engineer/pkg/yandexmaps"
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
 )
@@ -230,6 +231,59 @@ func (h *OrderHandler) GeneratePDF(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "pdf_url": pdfPath})
+}
+
+// GetNavigation возвращает ссылку для открытия Яндекс.Карт с маршрутом до объекта заказа.
+// Опционально query: from_lat, from_lng — начальная точка маршрута (иначе «с текущего места»).
+// Если у заказа нет координат, возвращается ссылка на поиск по адресу.
+func (h *OrderHandler) GetNavigation(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "неверный ID заказа"})
+		return
+	}
+
+	userID, _ := c.Get("user_id")
+	order, err := h.orderService.GetOrderByID(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "заказ не найден"})
+		return
+	}
+	if order.EngineerID != userID.(int64) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "нет доступа к заказу"})
+		return
+	}
+
+	var fromLat, fromLng *float64
+	if fs, fsOK := c.GetQuery("from_lat"); fsOK && fs != "" {
+		if ls, lsOK := c.GetQuery("from_lng"); lsOK && ls != "" {
+			a, e1 := strconv.ParseFloat(fs, 64)
+			b, e2 := strconv.ParseFloat(ls, 64)
+			if e1 == nil && e2 == nil {
+				fromLat = &a
+				fromLng = &b
+			}
+		}
+	}
+
+	var navURL string
+	mode := "route"
+	if order.Latitude == 0 && order.Longitude == 0 {
+		navURL = yandexmaps.SearchByAddressURL(order.Address)
+		mode = "search_address"
+	} else {
+		navURL = yandexmaps.RouteToPointURL(order.Latitude, order.Longitude, fromLat, fromLng)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"yandex_maps_url": navURL,
+		"mode":            mode,
+		"destination": gin.H{
+			"latitude":  order.Latitude,
+			"longitude": order.Longitude,
+			"address":   order.Address,
+		},
+	})
 }
 
 func (h *OrderHandler) UploadFile(c *gin.Context) {
