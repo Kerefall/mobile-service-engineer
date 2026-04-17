@@ -14,6 +14,27 @@ func NewAuthHandler(authService *services.AuthService) *AuthHandler {
     return &AuthHandler{authService: authService}
 }
 
+func (h *AuthHandler) Register(c *gin.Context) {
+    var req struct {
+        Login    string `json:"login" binding:"required"`
+        Password string `json:"password" binding:"required"`
+        FullName string `json:"full_name"`
+        Phone    string `json:"phone"`
+    }
+
+    if err := c.ShouldBindJSON(&req); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "неверный формат запроса"})
+        return
+    }
+
+    if err := h.authService.Register(c.Request.Context(), req.Login, req.Password, req.FullName, req.Phone); err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+
+    c.JSON(http.StatusCreated, gin.H{"success": true, "message": "регистрация успешна"})
+}
+
 func (h *AuthHandler) Login(c *gin.Context) {
     var req struct {
         Login    string `json:"login" binding:"required"`

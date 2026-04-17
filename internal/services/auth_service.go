@@ -18,6 +18,21 @@ func NewAuthService(db *pgxpool.Pool, jwtSecret string) *AuthService {
     return &AuthService{db: db, jwtSecret: jwtSecret}
 }
 
+func (s *AuthService) Register(ctx context.Context, login, password, fullName, phone string) error {
+    hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+    if err != nil {
+        return fmt.Errorf("ошибка хеширования пароля")
+    }
+    _, err = s.db.Exec(ctx, `
+        INSERT INTO engineers (login, password_hash, full_name, phone, is_active)
+        VALUES ($1, $2, $3, $4, true)
+    `, login, string(hash), fullName, phone)
+    if err != nil {
+        return fmt.Errorf("не удалось зарегистрировать пользователя")
+    }
+    return nil
+}
+
 type Engineer struct {
     ID       int64  `json:"id"`
     Login    string `json:"login"`
