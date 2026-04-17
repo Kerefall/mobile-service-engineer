@@ -41,6 +41,7 @@ func (r *TaskRepository) UpdateTaskStatus(ctx context.Context, taskID int, statu
 	return err
 }
 
+// CreateEngineer регистрирует нового пользователя
 func (r *TaskRepository) CreateEngineer(ctx context.Context, fullName, phone, passwordHash string) error {
 	query := `INSERT INTO engineers (full_name, phone, password_hash) VALUES ($1, $2, $3)`
 	_, err := r.db.ExecContext(ctx, query, fullName, phone, passwordHash)

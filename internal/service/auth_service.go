@@ -19,32 +19,20 @@ func NewAuthService(repo *repository.TaskRepository, secret string) *AuthService
 	return &AuthService{repo: repo, secret: []byte(secret)}
 }
 
-// Register - Регистрация нового инженера
-func (s *AuthService) Register(ctx context.Context, fullName, phone, password string) error {
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	if err != nil {
-		return err
-	}
-	return s.repo.CreateEngineer(ctx, fullName, phone, string(hashedPassword))
+func (s *AuthService) Register(ctx context.Context, name, phone, password string) error {
+	hash, _ := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	return s.repo.CreateEngineer(ctx, name, phone, string(hash))
 }
 
-// Login - Проверка данных и выдача токена
 func (s *AuthService) Login(ctx context.Context, phone, password string) (string, error) {
-	engineer, err := s.repo.GetEngineerByPhone(ctx, phone)
-	if err != nil {
-		return "", errors.New("пользователь не найден")
-	}
-
-	// Сравниваем хэш из БД с введенным паролем
-	err = bcrypt.CompareHashAndPassword([]byte(engineer.PasswordHash), []byte(password))
-	if err != nil {
-		return "", errors.New("неверный пароль")
+	eng, err := s.repo.GetEngineerByPhone(ctx, phone)
+	if err != nil || bcrypt.CompareHashAndPassword([]byte(eng.PasswordHash), []byte(password)) != nil {
+		return "", errors.New("invalid credentials")
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"user_id": engineer.ID,
+		"user_id": eng.ID,
 		"exp":     time.Now().Add(time.Hour * 72).Unix(),
 	})
-
 	return token.SignedString(s.secret)
 }
