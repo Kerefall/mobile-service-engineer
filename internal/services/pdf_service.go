@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jung-kurt/gofpdf/v2"
+	"github.com/sirupsen/logrus"
 )
 
 type PDFService struct {
@@ -96,6 +98,34 @@ func (s *PDFService) GenerateOrderPDF(ctx context.Context, orderID int64, photoB
 		}
 		pdf.Cell(40, 8, fmt.Sprintf("- %s x%d = %.2f руб.", name, quantity, price*float64(quantity)))
 		pdf.Ln(6)
+	}
+
+	vrows, err := s.db.Query(ctx, `SELECT file_path, created_at FROM order_voice_notes WHERE order_id = $1 ORDER BY created_at`, orderID)
+	if err != nil {
+		logrus.Warnf("PDF: блок голосовых пропущен (%v)", err)
+	} else {
+		defer vrows.Close()
+		headerPrinted := false
+		for vrows.Next() {
+			if !headerPrinted {
+				pdf.Ln(4)
+				pdf.SetFont("Arial", "B", 11)
+				pdf.Cell(40, 8, "Голосовые сообщения:")
+				pdf.Ln(6)
+				pdf.SetFont("Arial", "", 9)
+				headerPrinted = true
+			}
+			var vp string
+			var vt time.Time
+			if err := vrows.Scan(&vp, &vt); err != nil {
+				return "", err
+			}
+			pdf.Cell(0, 6, fmt.Sprintf("- %s (%s)", filepath.Base(vp), vt.Format("02.01.2006 15:04")))
+			pdf.Ln(5)
+		}
+		if err := vrows.Err(); err != nil {
+			return "", err
+		}
 	}
 
 	pdf.Ln(6)

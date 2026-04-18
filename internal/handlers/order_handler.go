@@ -37,6 +37,34 @@ func NewOrderHandler(orderService *services.OrderService, partService *services.
 	}
 }
 
+func validWorkflowStatus(s models.OrderStatus) bool {
+	switch s {
+	case models.StatusNew, models.StatusInProgress, models.StatusCompleted, models.StatusOnTheWay, models.StatusSyncing:
+		return true
+	default:
+		return false
+	}
+}
+
+// ensureOrderEngineer загружает заказ и проверяет, что он назначен текущему инженеру.
+func (h *OrderHandler) ensureOrderEngineer(c *gin.Context, orderID int64) (*models.Order, bool) {
+	userID, ok := c.Get("user_id")
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "нет пользователя"})
+		return nil, false
+	}
+	order, err := h.orderService.GetOrderByID(c.Request.Context(), orderID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "заказ не найден"})
+		return nil, false
+	}
+	if order.EngineerID != userID.(int64) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "нет доступа к заказу"})
+		return nil, false
+	}
+	return order, true
+}
+
 func (h *OrderHandler) GetOrders(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 	status := c.DefaultQuery("status", "active")
@@ -57,9 +85,8 @@ func (h *OrderHandler) GetOrderByID(c *gin.Context) {
 		return
 	}
 
-	order, err := h.orderService.GetOrderByID(c.Request.Context(), id)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "заказ не найден"})
+	order, ok := h.ensureOrderEngineer(c, id)
+	if !ok {
 		return
 	}
 
@@ -84,6 +111,15 @@ func (h *OrderHandler) UpdateOrderStatus(c *gin.Context) {
 		return
 	}
 
+	if !validWorkflowStatus(req.Status) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "недопустимый статус (допустимы: new, in_progress, completed, on_the_way, syncing)"})
+		return
+	}
+
+	if _, ok := h.ensureOrderEngineer(c, id); !ok {
+		return
+	}
+
 	err = h.orderService.UpdateOrderStatus(c.Request.Context(), id, req.Status, req.Lat, req.Lng)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "ошибка обновления статуса"})
@@ -97,6 +133,10 @@ func (h *OrderHandler) UploadPhotos(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "неверный ID заказа"})
+		return
+	}
+
+	if _, ok := h.ensureOrderEngineer(c, id); !ok {
 		return
 	}
 
@@ -171,6 +211,10 @@ func (h *OrderHandler) UploadSignature(c *gin.Context) {
 		return
 	}
 
+	if _, ok := h.ensureOrderEngineer(c, id); !ok {
+		return
+	}
+
 	var req struct {
 		Signature string `json:"signature" binding:"required"`
 	}
@@ -201,10 +245,95 @@ func (h *OrderHandler) UploadSignature(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Подпись сохранена", "path": path})
 }
 
+const maxVoiceUploadBytes = 10 << 20 // 10 MiB
+
+// UploadVoice загружает голосовое сообщение к заказу (поле multipart: audio).
+func (h *OrderHandler) UploadVoice(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "неверный ID заказа"})
+		return
+	}
+	if _, ok := h.ensureOrderEngineer(c, id); !ok {
+		return
+	}
+
+	file, err := c.FormFile("audio")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "файл audio не передан"})
+		return
+	}
+	if file.Size > maxVoiceUploadBytes {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "файл слишком большой (макс. 10 МБ)"})
+		return
+	}
+
+	src, err := file.Open()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "ошибка чтения файла"})
+		return
+	}
+	defer src.Close()
+
+	data, err := io.ReadAll(src)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "ошибка чтения файла"})
+		return
+	}
+
+	ext := filepath.Ext(file.Filename)
+	if ext == "" {
+		ext = ".m4a"
+	}
+	path, err := h.storageService.SaveFile(data, "voice", ext)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	var dur *int
+	if ds := c.PostForm("duration_sec"); ds != "" {
+		if n, e := strconv.Atoi(ds); e == nil && n >= 0 {
+			dur = &n
+		}
+	}
+
+	noteID, err := h.orderService.AddVoiceNote(c.Request.Context(), id, path, dur)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "id": noteID, "path": path})
+}
+
+// ListVoiceNotes список голосовых вложений заказа.
+func (h *OrderHandler) ListVoiceNotes(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "неверный ID заказа"})
+		return
+	}
+	if _, ok := h.ensureOrderEngineer(c, id); !ok {
+		return
+	}
+
+	notes, err := h.orderService.ListVoiceNotes(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, notes)
+}
+
 func (h *OrderHandler) CloseOrder(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "неверный ID заказа"})
+		return
+	}
+
+	if _, ok := h.ensureOrderEngineer(c, id); !ok {
 		return
 	}
 
@@ -229,6 +358,7 @@ func (h *OrderHandler) CloseOrder(c *gin.Context) {
 		logrus.Warnf("запчасти для 1С: %v", err)
 		partLines = nil
 	}
+	voicePaths, _ := h.orderService.VoicePathsForOrder(c.Request.Context(), id)
 	doneAt := time.Now()
 	payload := services.OrderClosePayload{
 		OrderID:            full.ID,
@@ -241,6 +371,7 @@ func (h *OrderHandler) CloseOrder(c *gin.Context) {
 		PhotoBeforeWebPath: full.PhotoBeforePath,
 		PhotoAfterWebPath:  full.PhotoAfterPath,
 		SignatureWebPath:   full.SignaturePath,
+		VoiceWebPaths:      voicePaths,
 		Parts:              partLines,
 	}
 	pushErr := h.onec.PushOrderClosed(c.Request.Context(), payload)
@@ -274,6 +405,10 @@ func (h *OrderHandler) GeneratePDF(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "неверный ID заказа"})
+		return
+	}
+
+	if _, ok := h.ensureOrderEngineer(c, id); !ok {
 		return
 	}
 

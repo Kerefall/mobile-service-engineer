@@ -1,10 +1,9 @@
 -- Добавляем тестового инженера
 -- Пароль: "123456" (хеширован bcrypt)
--- Для теста используем bcrypt хеш от "123456": $2a$10$N9qo8uLOickgx2ZMRZoMy.MrAJJjLqC.3jQq5jQq5jQq5jQq5jQq5
 INSERT INTO engineers (login, password_hash, full_name, phone, is_active) VALUES
-('ivanov.ii', '$2a$10$N9qo8uLOickgx2ZMRZoMy.MrAJJjLqC.3jQq5jQq5jQq5jQq5jQq5', 'Иванов Иван Иванович', '+7 (999) 123-45-67', true),
-('petrov.pp', '$2a$10$N9qo8uLOickgx2ZMRZoMy.MrAJJjLqC.3jQq5jQq5jQq5jQq5jQq5', 'Петров Петр Петрович', '+7 (999) 234-56-78', true),
-('sidorov.ss', '$2a$10$N9qo8uLOickgx2ZMRZoMy.MrAJJjLqC.3jQq5jQq5jQq5jQq5jQq5', 'Сидоров Сидор Сидорович', '+7 (999) 345-67-89', true);
+('ivanov.ii', '$2a$10$ms5jmKXwVWU2kaqO93toO.WlXXlHQ9Is6SWwInxPduAXFNjujsp6O', 'Иванов Иван Иванович', '+7 (999) 123-45-67', true),
+('petrov.pp', '$2a$10$ms5jmKXwVWU2kaqO93toO.WlXXlHQ9Is6SWwInxPduAXFNjujsp6O', 'Петров Петр Петрович', '+7 (999) 234-56-78', true),
+('sidorov.ss', '$2a$10$ms5jmKXwVWU2kaqO93toO.WlXXlHQ9Is6SWwInxPduAXFNjujsp6O', 'Сидоров Сидор Сидорович', '+7 (999) 345-67-89', true);
 
 -- Добавляем тестовые запчасти
 INSERT INTO parts (article, name, description, price, quantity_in_stock) VALUES

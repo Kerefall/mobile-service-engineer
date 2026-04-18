@@ -2,7 +2,9 @@ package services
 
 import (
     "context"
+    "database/sql"
     "fmt"
+    "strings"
     "time"
     "github.com/jackc/pgx/v5/pgxpool"
     "github.com/golang-jwt/jwt/v5"
@@ -105,6 +107,19 @@ func (s *AuthService) GetEngineerByID(ctx context.Context, id int64) (*Engineer,
         Phone:    phone,
         IsActive: isActive,
     }, nil
+}
+
+// GetFCMTokenByEngineerID возвращает сохранённый FCM-токен устройства (для push).
+func (s *AuthService) GetFCMTokenByEngineerID(ctx context.Context, engineerID int64) (string, error) {
+	var t sql.NullString
+	err := s.db.QueryRow(ctx, `SELECT fcm_token FROM engineers WHERE id = $1`, engineerID).Scan(&t)
+	if err != nil {
+		return "", err
+	}
+	if !t.Valid {
+		return "", nil
+	}
+	return strings.TrimSpace(t.String), nil
 }
 
 // UpdateFCMToken обновляет FCM токен инженера

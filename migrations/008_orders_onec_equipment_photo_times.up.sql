@@ -1,0 +1,6 @@
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS equipment TEXT DEFAULT '';
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS onec_guid VARCHAR(100);
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS photo_before_at TIMESTAMPTZ;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS photo_after_at TIMESTAMPTZ;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_onec_guid ON orders(onec_guid) WHERE onec_guid IS NOT NULL AND onec_guid <> '';

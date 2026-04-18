@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"time"
 
@@ -16,6 +17,10 @@ type OrderService struct {
 
 func NewOrderService(db *pgxpool.Pool) *OrderService {
 	return &OrderService{db: db}
+}
+
+func fillStatusLabel(o *models.Order) {
+	o.StatusLabel = o.Status.LabelRu()
 }
 
 const orderSelect = `
@@ -62,6 +67,7 @@ func (s *OrderService) GetOrdersByEngineer(ctx context.Context, engineerID int64
 		if err != nil {
 			return nil, fmt.Errorf("ошибка сканирования: %v", err)
 		}
+		fillStatusLabel(&order)
 		orders = append(orders, order)
 	}
 
@@ -83,6 +89,7 @@ func (s *OrderService) GetOrderByID(ctx context.Context, orderID int64) (*models
 	if err != nil {
 		return nil, err
 	}
+	fillStatusLabel(&order)
 	return &order, nil
 }
 
@@ -95,9 +102,10 @@ func (s *OrderService) GetEngineerIDByLogin(ctx context.Context, login string) (
 	return id, nil
 }
 
-func (s *OrderService) UpsertOrderFromOneC(ctx context.Context, onecGUID, title, description, equipment, address string, lat, lng float64, scheduledDate time.Time, engineerID int64) (int64, error) {
+// UpsertOrderFromOneC создаёт или обновляет заказ по guid из 1С. isNew=true только при первой вставке (для push).
+func (s *OrderService) UpsertOrderFromOneC(ctx context.Context, onecGUID, title, description, equipment, address string, lat, lng float64, scheduledDate time.Time, engineerID int64) (id int64, isNew bool, err error) {
 	var existing int64
-	err := s.db.QueryRow(ctx, `SELECT id FROM orders WHERE onec_guid = $1`, onecGUID).Scan(&existing)
+	err = s.db.QueryRow(ctx, `SELECT id FROM orders WHERE onec_guid = $1`, onecGUID).Scan(&existing)
 	if err == nil {
 		_, err = s.db.Exec(ctx, `
 			UPDATE orders SET
@@ -107,24 +115,23 @@ func (s *OrderService) UpsertOrderFromOneC(ctx context.Context, onecGUID, title,
 			WHERE id = $1
 		`, existing, title, description, equipment, address, lat, lng, scheduledDate, engineerID)
 		if err != nil {
-			return 0, fmt.Errorf("обновление заказа из 1С: %w", err)
+			return 0, false, fmt.Errorf("обновление заказа из 1С: %w", err)
 		}
-		return existing, nil
+		return existing, false, nil
 	}
 	if err != pgx.ErrNoRows {
-		return 0, err
+		return 0, false, err
 	}
 
-	var id int64
 	err = s.db.QueryRow(ctx, `
 		INSERT INTO orders (title, description, equipment, address, latitude, longitude, scheduled_date, status, engineer_id, onec_guid, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, 'new', $8, $9, NOW(), NOW())
 		RETURNING id
 	`, title, description, equipment, address, lat, lng, scheduledDate, engineerID, onecGUID).Scan(&id)
 	if err != nil {
-		return 0, fmt.Errorf("вставка заказа из 1С: %w", err)
+		return 0, false, fmt.Errorf("вставка заказа из 1С: %w", err)
 	}
-	return id, nil
+	return id, true, nil
 }
 
 func (s *OrderService) UpdateOrderStatus(ctx context.Context, orderID int64, status models.OrderStatus, lat, lng float64) error {
@@ -223,4 +230,56 @@ func (s *OrderService) CreateOrder(ctx context.Context, title, description, addr
 		return 0, fmt.Errorf("ошибка создания заказа: %v", err)
 	}
 	return orderID, nil
+}
+
+func (s *OrderService) AddVoiceNote(ctx context.Context, orderID int64, filePath string, durationSec *int) (int64, error) {
+	var id int64
+	err := s.db.QueryRow(ctx, `
+		INSERT INTO order_voice_notes (order_id, file_path, duration_sec) VALUES ($1, $2, $3) RETURNING id
+	`, orderID, filePath, durationSec).Scan(&id)
+	if err != nil {
+		return 0, fmt.Errorf("сохранение голоса: %w", err)
+	}
+	return id, nil
+}
+
+func (s *OrderService) ListVoiceNotes(ctx context.Context, orderID int64) ([]models.VoiceNote, error) {
+	rows, err := s.db.Query(ctx, `
+		SELECT id, order_id, file_path, duration_sec, created_at FROM order_voice_notes WHERE order_id = $1 ORDER BY created_at
+	`, orderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []models.VoiceNote
+	for rows.Next() {
+		var v models.VoiceNote
+		var dur sql.NullInt64
+		if err := rows.Scan(&v.ID, &v.OrderID, &v.FilePath, &dur, &v.CreatedAt); err != nil {
+			return nil, err
+		}
+		if dur.Valid {
+			n := int(dur.Int64)
+			v.DurationSec = &n
+		}
+		out = append(out, v)
+	}
+	return out, rows.Err()
+}
+
+func (s *OrderService) VoicePathsForOrder(ctx context.Context, orderID int64) ([]string, error) {
+	rows, err := s.db.Query(ctx, `SELECT file_path FROM order_voice_notes WHERE order_id = $1 ORDER BY created_at`, orderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var paths []string
+	for rows.Next() {
+		var p string
+		if err := rows.Scan(&p); err != nil {
+			return nil, err
+		}
+		paths = append(paths, p)
+	}
+	return paths, rows.Err()
 }

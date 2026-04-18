@@ -1,11 +1,14 @@
 package services
 
 import (
-    "context"
-    "fmt"
+	"context"
+	"fmt"
+	"strconv"
+	"strings"
 
-    "github.com/jackc/pgx/v5/pgxpool"
-    "github.com/Kerefall/mobile-service-engineer/internal/models"
+	"github.com/Kerefall/mobile-service-engineer/internal/models"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type PartService struct {
@@ -104,3 +107,65 @@ func (s *PartService) GetPartsLinesForOrder(ctx context.Context, orderID int64) 
 	}
 	return out, rows.Err()
 }
+
+// GetPartByID возвращает запчасть по id.
+func (s *PartService) GetPartByID(ctx context.Context, id int64) (*models.Part, error) {
+	var p models.Part
+	err := s.db.QueryRow(ctx, `
+		SELECT id, article, name, description, price, quantity_in_stock, created_at, updated_at
+		FROM parts WHERE id = $1
+	`, id).Scan(&p.ID, &p.Article, &p.Name, &p.Description, &p.Price, &p.QuantityInStock, &p.CreatedAt, &p.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
+
+// GetPartByArticle — поиск по артикулу (без учёта регистра и пробелов по краям).
+func (s *PartService) GetPartByArticle(ctx context.Context, article string) (*models.Part, error) {
+	var p models.Part
+	err := s.db.QueryRow(ctx, `
+		SELECT id, article, name, description, price, quantity_in_stock, created_at, updated_at
+		FROM parts WHERE lower(trim(article)) = lower(trim($1))
+	`, article).Scan(&p.ID, &p.Article, &p.Name, &p.Description, &p.Price, &p.QuantityInStock, &p.CreatedAt, &p.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
+
+// ResolvePartByQRCode разбирает содержимое QR: сырая строка артикула, `article:XXX` или `id:123`.
+func (s *PartService) ResolvePartByQRCode(ctx context.Context, code string) (*models.Part, error) {
+	code = strings.TrimSpace(code)
+	if code == "" {
+		return nil, fmt.Errorf("пустой код")
+	}
+	low := strings.ToLower(code)
+	if strings.HasPrefix(low, "id:") {
+		id, err := strconv.ParseInt(strings.TrimSpace(code[3:]), 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("неверный формат id в QR")
+		}
+		p, err := s.GetPartByID(ctx, id)
+		if err != nil {
+			if err == pgx.ErrNoRows {
+				return nil, fmt.Errorf("запчасть не найдена")
+			}
+			return nil, err
+		}
+		return p, nil
+	}
+	article := code
+	if strings.HasPrefix(low, "article:") {
+		article = strings.TrimSpace(code[len("article:"):])
+	}
+	p, err := s.GetPartByArticle(ctx, article)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, fmt.Errorf("запчасть не найдена")
+		}
+		return nil, err
+	}
+	return p, nil
+}
+

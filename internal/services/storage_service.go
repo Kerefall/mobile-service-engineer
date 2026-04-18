@@ -19,6 +19,7 @@ func NewStorageService(cfg *config.Config) *StorageService {
 	os.MkdirAll(filepath.Join(uploadPath, "photos"), 0755)
 	os.MkdirAll(filepath.Join(uploadPath, "signatures"), 0755)
 	os.MkdirAll(filepath.Join(uploadPath, "pdfs"), 0755)
+	os.MkdirAll(filepath.Join(uploadPath, "voice"), 0755)
 	
 	return &StorageService{uploadPath: uploadPath}
 }

@@ -96,3 +96,43 @@ func (h *SyncHandler) SyncOrderByPath(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "заказ синхронизирован"})
 }
+
+// SyncBatch обрабатывает очередь синхронизации после офлайн-режима (по одному заказу за элемент).
+func (h *SyncHandler) SyncBatch(c *gin.Context) {
+	var req dto.SyncBatchRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	userID, ok := c.Get("user_id")
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "нет пользователя"})
+		return
+	}
+
+	results := make([]dto.SyncBatchItemResult, 0, len(req.Items))
+	for _, item := range req.Items {
+		if item.OrderID == 0 {
+			results = append(results, dto.SyncBatchItemResult{OrderID: 0, OK: false, Error: "нужен order_id"})
+			continue
+		}
+		order, err := h.orderService.GetOrderByID(c.Request.Context(), item.OrderID)
+		if err != nil {
+			results = append(results, dto.SyncBatchItemResult{OrderID: item.OrderID, OK: false, Error: "заказ не найден"})
+			continue
+		}
+		if order.EngineerID != userID.(int64) {
+			results = append(results, dto.SyncBatchItemResult{OrderID: item.OrderID, OK: false, Error: "нет доступа"})
+			continue
+		}
+		err = h.syncService.SyncOrder(c.Request.Context(), item.OrderID, item.PhotoBefore, item.PhotoAfter, item.Signature, item.Parts)
+		if err != nil {
+			results = append(results, dto.SyncBatchItemResult{OrderID: item.OrderID, OK: false, Error: err.Error()})
+			continue
+		}
+		results = append(results, dto.SyncBatchItemResult{OrderID: item.OrderID, OK: true})
+	}
+
+	c.JSON(http.StatusOK, gin.H{"results": results})
+}

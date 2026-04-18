@@ -20,3 +20,14 @@ type SyncOrderResponse struct {
     Message string `json:"message"`
     PDFUrl  string `json:"pdf_url,omitempty"`
 }
+
+// SyncBatchRequest пакетная синхронизация после офлайн-режима.
+type SyncBatchRequest struct {
+	Items []SyncOrderRequest `json:"items" binding:"required,min=1"`
+}
+
+type SyncBatchItemResult struct {
+	OrderID int64  `json:"order_id"`
+	OK      bool   `json:"ok"`
+	Error   string `json:"error,omitempty"`
+}

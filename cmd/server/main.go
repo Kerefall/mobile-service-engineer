@@ -24,6 +24,7 @@ type routeDeps struct {
 	partHandler         *handlers.PartHandler
 	syncHandler         *handlers.SyncHandler
 	integrationHandler  *handlers.IntegrationHandler
+	metaHandler         *handlers.MetaHandler
 	idemp               gin.HandlerFunc
 }
 
@@ -44,6 +45,7 @@ func mountAPI(prefix string, router *gin.Engine, d *routeDeps) {
 		{
 			authorized.GET("/me", d.authHandler.GetMe)
 			authorized.POST("/engineer/fcm-token", d.authHandler.UpdateFCMToken)
+			authorized.GET("/meta/client", d.metaHandler.GetClientMeta)
 
 			authorized.GET("/orders", d.orderHandler.GetOrders)
 			authorized.GET("/orders/:id", d.orderHandler.GetOrderByID)
@@ -51,13 +53,17 @@ func mountAPI(prefix string, router *gin.Engine, d *routeDeps) {
 			authorized.POST("/orders/:id/status", d.orderHandler.UpdateOrderStatus)
 			authorized.POST("/orders/:id/photos", d.orderHandler.UploadPhotos)
 			authorized.POST("/orders/:id/signature", d.orderHandler.UploadSignature)
+			authorized.POST("/orders/:id/voice", d.orderHandler.UploadVoice)
+			authorized.GET("/orders/:id/voice", d.orderHandler.ListVoiceNotes)
 			authorized.POST("/orders/:id/close", d.orderHandler.CloseOrder)
 			authorized.GET("/orders/:id/generate-pdf", d.orderHandler.GeneratePDF)
 
 			authorized.GET("/parts", d.partHandler.GetParts)
+			authorized.GET("/parts/lookup", d.partHandler.LookupPart)
 
 			authorized.POST("/orders/:id/parts", d.idemp, d.partHandler.WriteOffParts)
 			authorized.POST("/sync", d.idemp, d.syncHandler.SyncOrder)
+			authorized.POST("/sync/batch", d.idemp, d.syncHandler.SyncBatch)
 			authorized.POST("/orders/:id/sync", d.idemp, d.syncHandler.SyncOrderByPath)
 
 			authorized.POST("/upload", d.orderHandler.UploadFile)
@@ -86,13 +92,15 @@ func main() {
 	partService := services.NewPartService(db.Pool)
 	pdfService := services.NewPDFService(db.Pool)
 	onecClient := services.NewOneCClient(cfg)
+	fcmService := services.NewFCMService(cfg, authService)
 	syncService := services.NewSyncService(db.Pool, storageService, pdfService, partService, onecClient)
 
 	authHandler := handlers.NewAuthHandler(authService)
 	orderHandler := handlers.NewOrderHandler(orderService, partService, pdfService, storageService, onecClient, cfg)
-	partHandler := handlers.NewPartHandler(partService)
+	partHandler := handlers.NewPartHandler(partService, orderService)
 	syncHandler := handlers.NewSyncHandler(syncService, orderService)
-	integrationHandler := handlers.NewIntegrationHandler(orderService)
+	integrationHandler := handlers.NewIntegrationHandler(orderService, fcmService)
+	metaHandler := handlers.NewMetaHandler()
 
 	idemp := middleware.IdempotencyMiddleware(db.Pool)
 
@@ -104,6 +112,7 @@ func main() {
 		partHandler:        partHandler,
 		syncHandler:        syncHandler,
 		integrationHandler: integrationHandler,
+		metaHandler:        metaHandler,
 		idemp:              idemp,
 	}
 

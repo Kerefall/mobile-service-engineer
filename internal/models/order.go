@@ -22,6 +22,24 @@ func (s OrderStatus) IsValid() bool {
     return false
 }
 
+// LabelRu человекочитаемый статус для UI (MVP: Новое / В работе / Завершено; дополнительно — В пути и др.).
+func (s OrderStatus) LabelRu() string {
+	switch s {
+	case StatusNew:
+		return "Новое"
+	case StatusInProgress:
+		return "В работе"
+	case StatusOnTheWay:
+		return "В пути"
+	case StatusCompleted:
+		return "Завершено"
+	case StatusSyncing:
+		return "Синхронизация"
+	default:
+		return string(s)
+	}
+}
+
 type Order struct {
     ID              int64       `json:"id"`
     Title           string      `json:"title"`
@@ -33,6 +51,7 @@ type Order struct {
     Longitude       float64     `json:"longitude,omitempty"`
     ScheduledDate   time.Time   `json:"scheduled_date"`
     Status          OrderStatus `json:"status"`
+    StatusLabel     string      `json:"status_label"`
     EngineerID      int64       `json:"engineer_id"`
     PhotoBeforePath string      `json:"photo_before_path,omitempty"`
     PhotoAfterPath  string      `json:"photo_after_path,omitempty"`
